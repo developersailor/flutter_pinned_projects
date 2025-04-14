@@ -1,13 +1,14 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+/// Represents a GitHub repository with essential information
 class Repository {
   final String name;
   final String description;
   final int stars;
   final String language;
   final String avatarUrl;
-  final bool isPinned;
+  final String url;
 
   Repository({
     required this.name,
@@ -15,39 +16,98 @@ class Repository {
     required this.stars,
     required this.language,
     required this.avatarUrl,
-    required this.isPinned,
+    required this.url,
   });
 
-  factory Repository.fromJson(Map<String, dynamic> json) {
+  /// Creates a Repository from GraphQL API response
+  factory Repository.fromGraphQLJson(Map<String, dynamic> json) {
+    final node = json['node'] ?? {};
+    final owner = node['owner'] ?? {};
+
     return Repository(
-      name: json['name'] ?? 'Unknown',
-      description: json['description'] ?? 'No description',
-      stars: json['stargazers_count'] ?? 0,
-      language: json['language'] ?? 'Unknown',
-      avatarUrl: json['owner']['avatar_url'] ?? '',
-      isPinned: json['pinned'] ?? false, // Assuming `pinned` is a property in the JSON
+      name: node['name'] ?? 'Unknown',
+      description: node['description'] ?? 'No description',
+      stars: node['stargazers']?['totalCount'] ?? 0,
+      language: node['primaryLanguage']?['name'] ?? 'Unknown',
+      avatarUrl: owner['avatarUrl'] ?? '',
+      url: node['url'] ?? '',
     );
   }
 }
 
+/// Service to interact with GitHub API and fetch pinned repositories
 class GithubService {
   final http.Client client;
 
-  GithubService({http.Client? client}) : client = client ?? http.Client();
+  /// Optional GitHub personal access token for authenticated requests
+  final String? accessToken;
 
+  GithubService({
+    http.Client? client,
+    this.accessToken,
+  }) : client = client ?? http.Client();
+
+  /// Fetches pinned repositories for a GitHub username using GraphQL API
   Future<List<Repository>> fetchPinnedRepositories(String username) async {
-    final url = Uri.parse('https://api.github.com/users/$username/repos');
-    final response = await client.get(url);
+    final url = Uri.parse('https://api.github.com/graphql');
+
+    // GraphQL query to get pinned repositories
+    final query = '''
+    {
+      user(login: "$username") {
+        pinnedItems(first: 6, types: REPOSITORY) {
+          edges {
+            node {
+              ... on Repository {
+                name
+                description
+                url
+                stargazers {
+                  totalCount
+                }
+                primaryLanguage {
+                  name
+                }
+                owner {
+                  avatarUrl
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    ''';
+
+    // Prepare headers - add token if available
+    final headers = {
+      'Content-Type': 'application/json',
+    };
+
+    if (accessToken != null) {
+      headers['Authorization'] = 'Bearer $accessToken';
+    }
+
+    final response = await client.post(
+      url,
+      headers: headers,
+      body: json.encode({'query': query}),
+    );
 
     if (response.statusCode == 200) {
-      final List<dynamic> repos = json.decode(response.body);
-      // Filter repositories based on a pinned criterion (e.g., pinned attribute)
-      return repos
-          .map((repo) => Repository.fromJson(repo))
-          .where((repo) => repo.isPinned) // Assuming `isPinned` is a property
-          .toList();
+      final responseData = json.decode(response.body);
+
+      // Check for errors in the GraphQL response
+      if (responseData['errors'] != null) {
+        throw Exception(responseData['errors'][0]['message']);
+      }
+
+      final edges =
+          responseData['data']['user']['pinnedItems']['edges'] as List;
+      return edges.map((edge) => Repository.fromGraphQLJson(edge)).toList();
     } else {
-      throw Exception('Failed to load repositories');
+      throw Exception(
+          'GitHub API request failed with status: ${response.statusCode}');
     }
   }
 }

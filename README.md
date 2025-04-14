@@ -14,7 +14,7 @@ Add the following to your `pubspec.yaml` file:
 
 ```yaml
 dependencies:
-  flutter_pinned_projects: ^0.0.1
+  flutter_pinned_projects: ^0.0.3
 ```
 
 Then, run:
