@@ -41,15 +41,7 @@ class PinnedProjectsWidget extends StatelessWidget {
             itemCount: repos.length,
             itemBuilder: (context, index) {
               final repo = repos[index];
-              // Use a placeholder image during tests to avoid NetworkImage errors
-              final imageProvider =
-                  repo.avatarUrl.startsWith('http') &&
-                          !const bool.fromEnvironment('dart.vm.product')
-                      ? const AssetImage('assets/placeholder.png')
-                          as ImageProvider<Object>
-                      : NetworkImage(repo.avatarUrl) as ImageProvider<Object>;
               return ListTile(
-                leading: CircleAvatar(backgroundImage: imageProvider),
                 title: Text(repo.name),
                 subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
